@@ -1,0 +1,716 @@
+####STRIKU MICROBIOME PROJECT####
+
+######## FUNGAL PIPELINE ########
+
+https://forum.qiime2.org/t/fungal-its-analysis-tutorial/7351
+https://docs.qiime2.org/2021.2/tutorials/importing/#sequence-data-with-sequence-quality-information-i-e-fastq
+
+####################################
+####################################
+######### FILE ORGANIZATION ########
+####################################
+####################################
+
+# Reference file is STRI = .
+
+# unzip files
+unzip 20210415_MSv3-PE300_CD-STRI-FUN-250-Bever_fastq.zip              
+unzip 20210412_MSv3-PE300_CD-STRI-FUN-AMF-OOMY-273-Bever_fastq.zip    
+ 
+ make directories for each group
+mkdir STRI_FUN                                                        
+mkdir STRI_OOMY                                                  
+mkdir STRI_AMF                                                       
+
+# make directory for each set of raw seqs
+mkdir STRI_FUN/rawR1R2                                                 
+mkdir STRI_FUN/rawR1                                                  
+mkdir STRI_OOMY/rawR1R2 
+mkdir STRI_OOMY/rawR1                                                   
+mkdir STRI_AMF/rawR1R2                                                   
+
+# copy files to corresponding directory
+cp ./CD-STRI-FUN-250-Bever_1mismatch/STRI_F*.gz STRI_FUN/rawR1R2/             
+cp ./CD-STRI-FUN-AMF-OOMY-273-Bever_1mismatch/STRI_F*.gz STRI_FUN/rawR1R2/    
+cp ./STRI_FUN/rawR1R2/*R1_001.fastq.gz STRI_FUN/rawR1/                        
+cp ./CD-STRI-FUN-AMF-OOMY-273-Bever_1mismatch/STRI_A*.gz STRI_AMF/rawR1R2/       
+cp ./CD-STRI-FUN-AMF-OOMY-273-Bever_1mismatch/STRI_O*.gz STRI_OOMY/rawR1R2/ 
+cp ./STRI_OOMY/rawR1R2/*R1_001.fastq.gz STRI_OOMY/rawR1/     
+
+# remove the unzipped files/ resulting directories
+rm -r ./CD-STRI-FUN-250-Bever_1mismatch                                
+rm -r ./CD-STRI-FUN-250-Bever_0mismatches                          
+rm -r ./CD-STRI-FUN-AMF-OOMY-273-Bever_0mismatches                   
+rm -r ./CD-STRI-FUN-AMF-OOMY-273-Bever_1mismatch  
+
+####################################
+####################################
+###### CREATE DB FOR PIPELINE ######
+####################################
+####################################
+
+# Reference file is STRI_FUN = .
+
+# make fungal unite clustering database: https://plutof.ut.ee/#/doi/10.15156/BIO/786385
+qiime tools import \
+  --input-path sh_refs_qiime_ver8_dynamic_04.02.2020.fasta  \
+  --output-path UNITE_clusterdb_04.02.2020 \
+  --type 'FeatureData[Sequence]'
+
+
+# make fungal unite tax database:
+qiime tools import \
+ --type FeatureData[Taxonomy] \
+ --input-path sh_taxonomy_qiime_ver8_dynamic_04.02.2020.txt \
+ --output-path UNITE_taxonomy_04.02.2020 \
+ --input-format HeaderlessTSVTaxonomyFormat
+
+# bring in funguild: Guilds_V1.1.py
+
+
+####################################
+####################################
+#### PAIRED END FUNGAL PIPELINE ####
+############### OTUS ###############
+####################################
+####################################
+
+1. IMPORT INTO QIIME2 ARTIFACT & REMOVE PRIMERS (artifact contains data and metadata, like a .biom file)
+
+module load qiime2
+
+#import files to .qza
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path rawR1R2 \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path STRIFUN_R1_R2.qza
+
+#remove primers
+#Forward = fITS7 = GTGARTCATCGAATCTTTG
+#Reverse = ITS4 = TCCTCCGCTTATTGATATGC
+qiime cutadapt trim-paired \
+  --i-demultiplexed-sequences STRIFUN_R1_R2.qza \
+  --p-front-f GTGARTCATCGAATCTTTG \
+  --p-front-r TCCTCCGCTTATTGATATGC \
+  --o-trimmed-sequences STRIFUN_R1_R2_trimmed.qza
+
+#AT THIS POINT, WE CAN DECIDE TO PROCEED WITH R1_R2 OR JUST R1.
+#IMPORTANT: to decide cutoffs, look at ‘Interactive Quality Plot” from demux.qzv 
+#A phred quality score of 20 means 99% accuracy in basepair calling; this is a conservative cutoff usually
+
+2. QUALITY CONTROL AND FEATURE TABLE (DADA2) 
+
+# summarize:https://view.qiime2.org/
+qiime demux summarize \
+ --i-data STRIFUN_R1_R2_trimmed.qza \
+ --o-visualization STRIFUN_R1_R2_trimmed.qzv
+
+#submit job:
+
+nano dada2denoise_STRI_FUN_R1_R2.sh
+
+#!/bin/bash
+#SBATCH --nodes=1                                                     # Number of nodes
+#SBATCH --ntasks-per-node=1                                           # Run a # of tasks per node
+#SBATCH --cpus-per-task=1                                             # Number of CPU cores per task
+#SBATCH --mem=122gb                                                   # Job memory request
+#SBATCH --time=00-15:00:00                                            # Time limit days-hrs:min:sec
+#SBATCH --partition=kbs                                               # Must specify your partition
+#SBATCH --mail-type=ALL                                               # Mail events
+#SBATCH --mail-user=camille.delavaux@ku.edu                           # Where to send mail
+#SBATCH --output=/home/c383d893/dada2denoise_STRIFUN_R1_R2.error.log  # Standard output and error
+#SBATCH --job-name=dada2denoise_STRIFUN_R1_R2                         # Job name
+
+module purge
+module load qiime2
+
+qiime dada2 denoise-paired \
+  --i-demultiplexed-seqs STRIFUN_R1_R2_trimmed.qza \
+  --p-trim-left-f 0 \                                                  #! This should be set every time
+  --p-trunc-len-f 220 \                                                #! This should be set every time
+  --p-trim-left-r 20 \                                                 #! This should be set every time
+  --p-trunc-len-r 200 \                                                #! This should be set every time
+  --o-representative-sequences rep_seqs_dada2_STRI_FUN_R1_R2.qza \
+  --o-table table_dada2_STRI_FUN_R1_R2.qza \
+  --o-denoising-stats stats_dada2_STRI_FUN_R1_R2.qza
+
+sbatch dada2denoise_STRI_FUN_R1_R2.sh
+
+#check denoising stats:
+
+qiime metadata tabulate \
+  --m-input-file stats_dada2_STRI_FUN_R1_R2.qza \
+  --o-visualization stats_dada2_STRI_FUN_R1_R2.qzv
+
+3. OPEN CLUSTERING (closed then denovo)
+
+#submit job:
+
+nano OTUCluster_STRI_FUN_R1_R2.sh
+
+#!/bin/bash
+#SBATCH --nodes=1                            
+#SBATCH --ntasks-per-node=1                 
+#SBATCH --cpus-per-task=1                    
+#SBATCH --mem=122gb                            
+#SBATCH --time=15-00:00:00               
+#SBATCH --partition=kbs                
+#SBATCH --mail-type=ALL                       
+#SBATCH --mail-user=camille.delavaux@ku.edu           
+#SBATCH --output=/home/c383d893/cluster_STRIFUN_R1_R2.error.log         
+#SBATCH --job-name=cluster_STRIFUN_R1_R2          
+
+module purge
+module load qiime2
+
+qiime vsearch cluster-features-open-reference \
+  --i-table table_dada2_STRI_FUN_R1_R2.qza \
+  --i-sequences rep_seqs_dada2_STRI_FUN_R1_R2.qza \
+  --i-reference-sequences UNITE_clusterdb_04.02.2020.qza \
+  --p-perc-identity 0.97 \
+  --o-clustered-table table_or_97_STRI_FUN_R1_R2.qza \
+  --o-clustered-sequences rep_seqs_or_97_STRI_FUN_R1_R2.qza \
+  --o-new-reference-sequences new_ref_seqs_or_97_STRI_FUN_R1_R2.qza
+
+sbatch OTUCluster_STRI_FUN_R1_R2.sh
+
+
+5. UNITE TAXONOMY:
+
+#submit job:
+
+nano taxclass_STRI_FUN_R1_R2.sh
+
+#!/bin/bash
+#SBATCH --nodes=1                            
+#SBATCH --ntasks-per-node=1                
+#SBATCH --cpus-per-task=1                    
+#SBATCH --mem=122gb                           
+#SBATCH --time=15-00:00:00                    
+#SBATCH --partition=kbs                
+#SBATCH --mail-type=ALL                       
+#SBATCH --mail-user=camille.delavaux@ku.edu            
+#SBATCH --output=/home/c383d893/tax_STRI_FUN_R1_R2.error.log        
+#SBATCH --job-name=tax_STRI_FUN_R1_R2         
+
+module purge
+module load qiime2
+
+qiime feature-classifier classify-consensus-vsearch \
+  --i-query rep_seqs_or_97_STRI_FUN_R1_R2.qza \
+  --i-reference-reads UNITE_clusterdb_04.02.2020.qza \
+  --i-reference-taxonomy UNITE_taxonomy_04.02.2020.qza \
+  --p-perc-identity 0.97 \
+  --o-classification taxonomy_vsearch_UNITE_STRI_FUN_R1_R2.qza
+
+sbatch taxclass_STRI_FUN_R1_R2.sh
+
+
+6. EXPORT, PREP, AND RUN THROUGH FUNGUILD TO GET GUILDS
+
+#export tax:
+qiime tools export \
+  --input-path taxonomy_vsearch_UNITE_STRI_FUN_R1_R2.qza \
+  --output-path exported_taxonomy_vsearch_UNITE_STRI_FUN_R1_R2
+
+#export otu table:
+qiime tools export \
+  --input-path table_or_97_STRI_FUN_R1_R2.qza \
+  --output-path exported_table_or_97_STRI_FUN_R1_R2
+
+#go to table area: 
+cd exported_table_or_97_STRI_FUN_R1_R2
+#biom to txt:
+biom convert -i feature-table.biom -o table_or_97_STRI_FUN_R1_R2.txt --to-tsv
+
+#change header: #otu-id	taxonomy	Confidence
+cd exported_taxonomy_vsearch_UNITE_STRI_FUN_R1_R2
+sed '1d' taxonomy.tsv | sed '1i\#otu-id\ttaxonomy\tConfidence' > taxonomy_meta.tsv
+
+#add metadata to biom table:
+
+biom add-metadata \
+ --input-fp exported_table_or_97_STRI_FUN_R1_R2/feature-table.biom \
+ --observation-metadata-fp exported_taxonomy_vsearch_UNITE_STRI_FUN_R1_R2/taxonomy_meta.tsv \
+ --output-fp table_or_97_STRI_FUN_R1_R2_tax.biom
+
+#convert biom
+
+biom convert \
+ --input-fp table_or_97_STRI_FUN_R1_R2_tax.biom \
+ --output-fp table_or_97_STRI_FUN_R1_R2_tax.tsv \
+ --to-tsv \
+ --header-key taxonomy
+
+#run through funguild
+
+#remove first row and # in second row table_or_97_STRI_FUN_R1_R2_tax.tsv > table_or_97_STRI_FUN_R1_R2_tax.txt
+
+sed '1d' table_or_97_STRI_FUN_R1_R2_tax.tsv | sed 's/#OTU ID/OTU ID/g' > table_or_97_STRI_FUN_R1_R2_tax.txt
+
+module load python
+python Guilds_v1.1b.py -otu table_or_97_STRI_FUN_R1_R2_tax.txt -db fungi -m -u
+
+7. CLEAN & EXPORT
+
+a. import OTU table to qiime:
+
+biom convert -i table_or_97_STRI_FUN_R1_R2_tax.txt -o table_or_97_STRI_FUN_R1_R2_tax.biom --to-hdf5 --table-type="OTU table"
+
+qiime tools import \
+  --input-path table_or_97_STRI_FUN_R1_R2_tax.biom\
+  --type 'FeatureTable[Frequency]' \
+  --input-format BIOMV210Format \
+  --output-path table_or_97_STRI_FUN_R1_R2_tax
+
+#export biom to txt:
+	biom convert -i table_or_97_STRI_FUN_R1_R2_tax.biom -o table_or_97_STRI_FUN_R1_R2_tax.txt --to-tsv
+
+
+b. Filter OTUs from OTU table that occur less than 5 times	
+
+qiime feature-table filter-features \
+  --i-table table_or_97_STRI_FUN_R1_R2_tax.qza\
+  --p-min-frequency 5 \
+  --o-filtered-table table_or_97_STRI_FUN_R1_R2_tax_5.qza
+
+c. Filter OTU table to remove samples with <1000 reads
+# This step normalizes data given differences in read depth among samples	
+
+qiime feature-table filter-samples \
+  --i-table table_or_97_STRI_FUN_R1_R2_tax_5.qza \
+  --p-min-frequency 1000\
+  --o-filtered-table table_or_97_STRI_FUN_R1_R2_tax_5_1000.qza
+
+8.EXOPRT AND CONVERT TO .TXT
+# Export 
+
+qiime tools export \
+  --input-path table_or_97_STRI_FUN_R1_R2_tax_5_1000.qza \
+  --output-path exported-table_or_97_STRI_FUN_R1_R2_tax_5_1000
+
+# Convert from biom to txt
+#go to table area: 
+	cd exported-table_or_97_STRI_FUN_R1_R2_tax_5_1000
+#biom to txt:
+	biom convert -i feature-table.biom -o table_or_97_STRI_FUN_R1_R2_tax_5_1000.txt --to-tsv
+
+
+####################################
+####################################
+#### PAIRED END FUNGAL PIPELINE ####
+############### ASVS ###############
+####################################
+####################################
+
+# STEPS 1 AND 2 ARE SAME AS ABOVE.
+
+1. IMPORT INTO QIIME2 ARTIFACT & REMOVE PRIMERS (artifact contains data and metadata, like a .biom file)
+
+module load qiime2
+
+#import files to .qza
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path rawR1R2 \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path STRIFUN_R1_R2.qza
+
+#remove primers
+#Forward = fITS7 = GTGARTCATCGAATCTTTG
+#Reverse = ITS4 = TCCTCCGCTTATTGATATGC
+qiime cutadapt trim-paired \
+  --i-demultiplexed-sequences STRIFUN_R1_R2.qza \
+  --p-front-f GTGARTCATCGAATCTTTG \
+  --p-front-r TCCTCCGCTTATTGATATGC \
+  --o-trimmed-sequences STRIFUN_R1_R2_trimmed.qza
+
+#AT THIS POINT, WE CAN DECIDE TO PROCEED WITH R1_R2 OR JUST R1.
+#IMPORTANT: to decide cutoffs, look at ‘Interactive Quality Plot” from demux.qzv 
+#A phred quality score of 20 means 99% accuracy in basepair calling; this is a conservative cutoff usually
+
+2. QUALITY CONTROL AND FEATURE TABLE (DADA2) 
+
+# summarize:https://view.qiime2.org/
+qiime demux summarize \
+ --i-data STRIFUN_R1_R2_trimmed.qza \
+ --o-visualization STRIFUN_R1_R2_trimmed.qzv
+
+#submit job:
+
+nano dada2denoise_STRI_FUN_R1_R2.sh
+
+#!/bin/bash
+#SBATCH --nodes=1                                                     # Number of nodes
+#SBATCH --ntasks-per-node=1                                           # Run a # of tasks per node
+#SBATCH --cpus-per-task=1                                             # Number of CPU cores per task
+#SBATCH --mem=122gb                                                   # Job memory request
+#SBATCH --time=00-15:00:00                                            # Time limit days-hrs:min:sec
+#SBATCH --partition=kbs                                               # Must specify your partition
+#SBATCH --mail-type=ALL                                               # Mail events
+#SBATCH --mail-user=camille.delavaux@ku.edu                           # Where to send mail
+#SBATCH --output=/home/c383d893/dada2denoise_STRIFUN_R1_R2.error.log  # Standard output and error
+#SBATCH --job-name=dada2denoise_STRIFUN_R1_R2                         # Job name
+
+module purge
+module load qiime2
+
+qiime dada2 denoise-paired \
+  --i-demultiplexed-seqs STRIFUN_R1_R2_trimmed.qza \
+  --p-trim-left-f 0 \                                                  #! This should be set every time
+  --p-trunc-len-f 220 \                                                #! This should be set every time
+  --p-trim-left-r 20 \                                                 #! This should be set every time
+  --p-trunc-len-r 200 \                                                #! This should be set every time
+  --o-representative-sequences rep_seqs_dada2_STRI_FUN_R1_R2.qza \
+  --o-table table_dada2_STRI_FUN_R1_R2.qza \
+  --o-denoising-stats stats_dada2_STRI_FUN_R1_R2.qza
+
+sbatch dada2denoise_STRI_FUN_R1_R2.sh
+
+#check denoising stats:
+
+qiime metadata tabulate \
+  --m-input-file stats_dada2_STRI_FUN_R1_R2.qza \
+  --o-visualization stats_dada2_STRI_FUN_R1_R2.qzv
+
+########################################
+##### SKIP STEP 3: OTU CLUSTERING ######
+########################################
+
+5. UNITE TAXONOMY:
+
+#submit job:
+
+nano taxclass_STRI_ASVFUN_R1_R2.sh
+
+#!/bin/bash
+#SBATCH --nodes=1                            
+#SBATCH --ntasks-per-node=1                
+#SBATCH --cpus-per-task=1                    
+#SBATCH --mem=122gb                           
+#SBATCH --time=15-00:00:00                    
+#SBATCH --partition=kbs                
+#SBATCH --mail-type=ALL                       
+#SBATCH --mail-user=camille.delavaux@ku.edu            
+#SBATCH --output=/home/c383d893/tax_STRI_ASVFUN_R1_R2.error.log        
+#SBATCH --job-name=tax_STRI_ASVFUN_R1_R2         
+
+module purge
+module load qiime2
+
+qiime feature-classifier classify-consensus-vsearch \
+  --i-query rep_seqs_dada2_STRI_FUN_R1_R2.qza \
+  --i-reference-reads UNITE_clusterdb_04.02.2020.qza \
+  --i-reference-taxonomy UNITE_taxonomy_04.02.2020.qza \
+  --p-perc-identity 0.97 \
+  --o-classification taxonomy_vsearch_UNITE_STRI_ASVFUN_R1_R2.qza
+
+sbatch taxclass_STRI_ASVFUN_R1_R2.sh
+
+
+6. EXPORT, PREP, AND RUN THROUGH FUNGUILD TO GET GUILDS
+
+#export tax:
+qiime tools export \
+  --input-path taxonomy_vsearch_UNITE_STRI_ASVFUN_R1_R2.qza \
+  --output-path exported_taxonomy_vsearch_UNITE_STRI_ASVFUN_R1_R2
+
+#export asv table:
+qiime tools export \
+  --input-path table_dada2_STRI_FUN_R1_R2.qza \
+  --output-path exported_table_or_97_STRI_ASVFUN_R1_R2
+
+#go to table area: 
+cd exported_table_or_97_STRI_ASVFUN_R1_R2
+#biom to txt:
+biom convert -i feature-table.biom -o table_or_97_STRI_ASVFUN_R1_R2.txt --to-tsv
+
+#change header: #otu-id	taxonomy	Confidence
+cd exported_taxonomy_vsearch_UNITE_STRI_ASVFUN_R1_R2
+sed '1d' taxonomy.tsv | sed '1i\#asv-id\ttaxonomy\tConfidence' > taxonomy_meta.tsv
+
+#add metadata to biom table:
+
+biom add-metadata \
+ --input-fp exported_table_or_97_STRI_ASVFUN_R1_R2/feature-table.biom \
+ --observation-metadata-fp exported_taxonomy_vsearch_UNITE_STRI_ASVFUN_R1_R2/taxonomy_meta.tsv \
+ --output-fp table_or_97_STRI_ASVFUN_R1_R2_tax.biom
+
+#convert biom
+
+biom convert \
+ --input-fp table_or_97_STRI_ASVFUN_R1_R2_tax.biom \
+ --output-fp table_or_97_STRI_ASVFUN_R1_R2_tax.tsv \
+ --to-tsv \
+ --header-key taxonomy
+
+#run through funguild
+
+#remove first row and # in second row table_or_97_STRI_ASVFUN_R1_R2_tax.tsv > table_or_97_STRI_ASVFUN_R1_R2_tax.txt
+
+sed '1d' table_or_97_STRI_ASVFUN_R1_R2_tax.tsv | sed 's/#OTU ID/OTU ID/g' > table_or_97_STRI_ASVFUN_R1_R2_tax.txt
+
+module load python
+python Guilds_v1.1b.py -otu table_or_97_STRI_ASVFUN_R1_R2_tax.txt -db fungi -m -u
+
+7. CLEAN & EXPORT
+
+a. import OTU table to qiime:
+
+biom convert -i table_or_97_STRI_ASVFUN_R1_R2_tax.txt -o table_or_97_STRI_ASVFUN_R1_R2_tax.biom --to-hdf5 --table-type="OTU table"
+
+qiime tools import \
+  --input-path table_or_97_STRI_ASVFUN_R1_R2_tax.biom\
+  --type 'FeatureTable[Frequency]' \
+  --input-format BIOMV210Format \
+  --output-path table_or_97_STRI_ASVFUN_R1_R2_tax
+
+#export biom to txt:
+	biom convert -i table_or_97_STRI_ASVFUN_R1_R2_tax.biom -o table_or_97_STRI_ASVFUN_R1_R2_tax.txt --to-tsv
+
+b. Filter OTUs from OTU table that occur less than 5 times	
+
+qiime feature-table filter-features \
+  --i-table table_or_97_STRI_ASVFUN_R1_R2_tax.qza\
+  --p-min-frequency 5 \
+  --o-filtered-table table_or_97_STRI_ASVFUN_R1_R2_tax_5.qza
+
+c. Filter OTU table to remove samples with <1000 reads
+# This step normalizes data given differences in read depth among samples	
+
+qiime feature-table filter-samples \
+  --i-table table_or_97_STRI_ASVFUN_R1_R2_tax_5.qza \
+  --p-min-frequency 1000\
+  --o-filtered-table table_or_97_STRI_ASVFUN_R1_R2_tax_5_1000.qza
+
+8.EXOPRT AND CONVERT TO .TXT
+# Export
+
+qiime tools export \
+  --input-path table_or_97_STRI_ASVFUN_R1_R2_tax_5_1000.qza \
+  --output-path exported-table_or_97_STRI_ASVFUN_R1_R2_tax_5_1000
+
+# Convert from biom to txt
+#go to table area: 
+	cd exported-table_or_97_STRI_ASVFUN_R1_R2_tax_5_1000
+#biom to txt:
+	biom convert -i feature-table.biom -o table_or_97_STRI_ASVFUN_R1_R2_tax_5_1000.txt --to-tsv
+
+
+
+
+####################################
+####################################
+### FORWARD READ FUNGAL PIPELINE ###
+####################################
+####################################
+
+1. IMPORT INTO QIIME2 ARTIFACT & REMOVE PRIMERS 
+qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path rawR1 \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path STRIFUN_R1.qza
+
+#remove primers
+#Forward = fITS7 = GTGARTCATCGAATCTTTG
+qiime cutadapt trim-single \
+  --i-demultiplexed-sequences STRIFUN_R1.qza \
+  --p-front GTATGYYTGTATCAGTG \ 
+  --o-trimmed-sequences STRIFUN_R1_trimmed.qza
+
+2. QUALITY CONTROL AND FEATURE TABLE (DADA2) 
+
+#General summary: https://view.qiime2.org/
+qiime demux summarize \
+  --i-data STRIFUN_R1_trimmed.qza \
+  --o-visualization STRIFUN_R1_trimmed.qzv
+
+#IMPORTANT: to decide cutoffs, look at ‘Interactive Quality Plot” from demux.qzv 
+#A phred quality score of 20 means 99% accuracy in basepair calling; this is a conservative cutoff usually
+
+#submit job:
+
+#!/bin/bash
+#SBATCH --nodes=1                                                     
+#SBATCH --ntasks-per-node=1                                           
+#SBATCH --cpus-per-task=1                                             
+#SBATCH --mem=122gb                                                  
+#SBATCH --time=00-15:00:00                                           
+#SBATCH --partition=kbs                                               
+#SBATCH --mail-type=ALL                                               
+#SBATCH --mail-user=camille.delavaux@ku.edu                         
+#SBATCH --output=/home/c383d893/dada2denoise_STRIFUN_R1.error.log     
+#SBATCH --job-name=dada2denoise_STRIFUN_R1                           
+
+module purge
+module load qiime2
+
+qiime dada2 denoise-single \
+  --i-demultiplexed-seqs STRIFUN_R1_trimmed.qza \
+  --p-trim-left 0 \                                                    #! This should be set every time
+  --p-trunc-len 220 \                                                  #! This should be set every time
+  --o-representative-sequences rep_seqs_dada2_STRI_FUN_R1.qza \
+  --o-table table_dada2_STRI_FUN_R1.qza \
+  --o-denoising-stats stats_dada2_STRI_FUN_R1.qza
+
+sbatch dada2denoise_STRI_FUN_R1.sh
+
+#check denoising stats:
+
+qiime metadata tabulate \
+  --m-input-file stats_dada2_STRI_FUN_R1.qza \
+  --o-visualization stats_dada2_STRI_FUN_R1.qzv
+
+
+3. OPEN CLUSTERING (closed then denovo)
+
+#submit job:
+
+#!/bin/bash
+#SBATCH --nodes=1                             
+#SBATCH --ntasks-per-node=1                 
+#SBATCH --cpus-per-task=1                    
+#SBATCH --mem=122gb                            
+#SBATCH --time=15-00:00:00                     
+#SBATCH --partition=kbs              
+#SBATCH --mail-type=ALL                       
+#SBATCH --mail-user=camille.delavaux@ku.edu            
+#SBATCH --output=/home/c383d893/cluster_STRIFUN_R1.error.log         
+#SBATCH --job-name=cluster_STRIFUN_R1          
+
+module purge
+module load qiime2
+
+qiime vsearch cluster-features-open-reference \
+  --i-table table_dada2_STRI_FUN_R1.qza \
+  --i-sequences rep_seqs_dada2_STRI_FUN_R1.qza \
+  --i-reference-sequences UNITE_clusterdb_04.02.2020.qza \
+  --p-perc-identity 0.97 \
+  --o-clustered-table table_or_97_STRI_FUN_R1.qza \
+  --o-clustered-sequences rep_seqs_or_97_STRI_FUN_R1.qza \
+  --o-new-reference-sequences new_ref_seqs_or_97_STRI_FUN_R1.qza
+
+sbatch OTUCluster_STRI_FUN_R1.sh
+
+
+5. UNITE TAXONOMY:
+
+#submit job:
+
+#!/bin/bash
+#SBATCH --nodes=1                             
+#SBATCH --ntasks-per-node=1                 
+#SBATCH --cpus-per-task=1                  
+#SBATCH --mem=122gb                           
+#SBATCH --time=15-00:00:00                    
+#SBATCH --partition=kbs               
+#SBATCH --mail-type=ALL                       
+#SBATCH --mail-user=camille.delavaux@ku.edu            
+#SBATCH --output=/home/c383d893/tax_STRI_FUN_R1.error.log         
+#SBATCH --job-name=tax_STRI_FUN_R1           
+
+module purge
+module load qiime2
+
+qiime feature-classifier classify-consensus-vsearch \
+  --i-query rep_seqs_or_97_STRI_FUN_R1.qza \
+  --i-reference-reads UNITE_clusterdb_04.02.2020.qza \
+  --i-reference-taxonomy UNITE_taxonomy_04.02.2020.qza \
+  --p-perc-identity 0.97 \
+  --o-classification taxonomy_vsearch_UNITE_STRI_FUN_R1.qza
+
+sbatch taxclass_STRI_FUN_R1.sh
+
+6. EXPORT, PREP, AND RUN THROUGH FUNGUILD TO GET GUILDS
+
+#export tax:
+qiime tools export \
+  --input-path taxonomy_vsearch_UNITE_STRI_FUN_R1.qza \
+  --output-path exported_taxonomy_vsearch_UNITE_STRI_FUN_R1
+
+#export table:
+qiime tools export \
+ --input-path table_or_97_STRI_FUN_R1.qza \
+ --output-path exported_table_or_97_STRI_FUN_R1
+
+#go to table area: 
+cd exported_table_or_97_STRI_FUN_R1
+#biom to txt:
+biom convert -i feature-table.biom -o table_or_97_STRI_FUN_R1.txt --to-tsv
+
+#change header: #otu-id	taxonomy	Confidence
+cd exported_taxonomy_vsearch_UNITE_STRI_FUN_R1
+sed '1d' taxonomy.tsv | sed '1i\#asv-id\ttaxonomy\tConfidence' > taxonomy_meta.tsv
+#add metadata to biom table:
+
+biom add-metadata \
+ --input-fp exported_table_or_97_STRI_FUN_R1/feature-table.biom \
+ --observation-metadata-fp exported_taxonomy_vsearch_UNITE_STRI_FUN_R1/taxonomy_meta.tsv \
+ --output-fp table_or_97_STRI_FUN_R1_tax.biom
+
+#convert biom
+
+biom convert \
+ --input-fp table_or_97_STRI_FUN_R1_tax.biom \
+ --output-fp table_or_97_STRI_FUN_R1_tax.tsv \
+ --to-tsv \
+ --header-key taxonomy
+
+#run through funguild
+
+#remove first row and # in second row table_or_97_STRI_FUN_R1_tax.tsv > table_or_97_STRI_FUN_R1_tax.txt
+sed '1d' table_or_97_STRI_FUN_R1_tax.tsv | sed 's/#//g' > table_or_97_STRI_FUN_R1_tax.txt
+
+module load python
+python Guilds_v1.1b.py -otu table_or_97_STRI_FUN_R1_tax.txt -db fungi -m -u
+
+
+7. CLEAN & EXPORT
+
+a. import OTU table to qiime:
+
+biom convert -i table_or_97_STRI_FUN_R1_tax.txt -o table_or_97_STRI_FUN_R1_tax.biom --to-hdf5 --table-type="OTU table"
+
+qiime tools import \
+  --input-path table_or_97_STRI_FUN_R1_tax.biom\
+  --type 'FeatureTable[Frequency]' \
+  --input-format BIOMV210Format \
+  --output-path table_or_97_STRI_FUN_R1_tax
+
+b. Filter OTUs from OTU table that occur less than 5 times	
+
+qiime feature-table filter-features \
+  --i-table table_or_97_STRI_FUN_R1_tax.qza\
+  --p-min-frequency 5 \
+  --o-filtered-table table_or_97_STRI_FUN_R1_tax_5.qza
+
+c. Filter OTU table to remove samples with <1000 reads
+# This step normalizes data given differences in read depth among samples	
+
+qiime feature-table filter-samples \
+  --i-table table_or_97_STRI_FUN_R1_tax_5.qza \
+  --p-min-frequency 1000\
+  --o-filtered-table table_or_97_STRI_FUN_R1_tax_5_1000.qza
+
+8.EXOPRT AND CONVERT TO .TXT
+# Export
+
+qiime tools export \
+  --input-path table_or_97_STRI_FUN_R1_tax_5_1000.qza \
+  --output-path exported-table_or_97_STRI_FUN_R1_tax_5_1000
+
+# Convert from biom to txt
+#go to table area: 
+	cd exported-table_or_97_STRI_FUN_R1_tax_5_1000
+#biom to txt:
+	biom convert -i feature-table.biom -o table_or_97_STRI_FUN_R1_tax_5_1000.txt --to-tsv
+
+
+
+
+
+
+
+
