@@ -10,16 +10,24 @@ library(plyr)
 
 ```{r}
 df = read.csv('../data/seedling_census_raw_data.csv',header=TRUE)
+df2 = read.csv('../data/Entries_4_2020_on.csv',header=TRUE)
 df_meta = read.csv('../Seedling_Metadata_05.27.2021.csv',header=TRUE)
-```
-
-```{r}
-head(df_meta)
-```
-
-```{r}
 head(df)
 ```
+
+
+```{r}
+names(df2)[names(df2) == 'Arbol_Tag'] <- 'AdultTag'
+names(df2)[names(df2) == 'Num_Hojas'] <- 'Num_Leaves'
+names(df2)[names(df2) == 'Altura'] <- 'Height'
+names(df2)[names(df2) == 'Herb_.'] <- 'Herbivory'
+names(df2)[names(df2) == 'Pathoj_.'] <- 'Pathogen_Symptoms'
+df2 = df2[c('Date','Seedling_ID','Seedling_Num','Num_cotyledons_20191210_and_on','Num_Leaves','Height','Herbivory','Pathogen_Symptoms','Notes')]
+head(df2)
+```
+
+
+
 
 ```{r}
 df$Seedling_ID = str_replace_all(df$Seedling_ID,'-','_')
@@ -90,7 +98,7 @@ df[which(df$Concerns.with.point=='height went from 10 to 15 (later returns to 10
 df[which(df$Concerns.with.point=='only one entry recorded and its 100% herbivory'),'Concerns.with.point'] = ''#New germination was eaten by an herbivore
 df[which(df$Concerns.with.point=='height jumped 5 cm in 5 days'),'Concerns.with.point'] = ''#Finished germinating
 df[which(df$Concerns.with.point=='height is 3 but 3 days later its 9 and stays that way'),'Concerns.with.point'] = ''#Finished germinating
-df = df[which(!(df$Seedling_ID=='12855_0803_02')&!(df$Date>=20190815)),] #Additional data after the seedling died.
+df = df[which(!((df$Seedling_ID=='12855_0803_02')&(df$Date>=20190815))),] #Additional data after the seedling died.
 df[which(!(df$Concerns.with.point=='says "dead" on OG sheet that I didnt make but there is later data; deleted rest of "dead\' entries and moved into "deleted sheet"')),] #Additional data after the seedling died.
 df[which(df$Concerns.with.point=='paper says 0407'),'Concerns.with.point'] = '' #Seems to have been sorted out
 df[which(df$Concerns.with.point=='height 2.5 cm less than day before'),'Concerns.with.point'] = '' #Noise in measurement
@@ -104,7 +112,33 @@ df[which(df$Concerns.with.point=='there were ~10 entries prior that listed the s
 df[which(df$Concerns.with.point=='says "dead" on OG sheet that I didnt make but there is later data; deleted rest of "dead\' entries and moved into "deleted sheet"'),'Concerns.with.point'] = ''#No relevant growth data from deleted entries, so keeping the current ID
 unique(df$Concerns.with.point)
 ```
+
+
 ```{r}
+df = df[,c('Date','Seedling_ID','Seedling_Num','Num_Leaves','Height','Herbivory','Pathogen_Symptoms','Notes')]
+head(df)
+```
+
+```{r}
+unique(df2$Notes)
+df2[which(df2$Notes=='S'),'Notes'] = ''
+df2$Herbivory = as.character(df2$Herbivory)
+df2$Pathogen_Symptoms = as.character(df2$Pathogen_Symptoms)
+df2[which(df2$Herbivory=='SI'),'Herbivory'] = as.character(1)
+df2[which(df2$Pathogen_Symptoms=='SI'),'Pathogen_Symptoms'] = as.character(1)
+df2$Herbivory = as.numeric(df2$Herbivory)
+df2$Pathogen_Symptoms = as.numeric(df2$Pathogen_Symptoms)
+df2[which(df2$Herbivory>0),'Herbivory'] = 1
+df2[which(df2$Pathogen_Symptoms>0),'Pathogen_Symptoms'] = 1
+df2$Num_Leaves = df2$Num_Leaves+df2$Num_cotyledons_20191210_and_on
+df2 = df2[,which(names(df2)!='Num_cotyledons_20191210_and_on')]
+df2 = df2[,c('Date','Seedling_ID','Seedling_Num','Num_Leaves','Height','Herbivory','Pathogen_Symptoms','Notes')]
+df = rbind(df,df2)
+```
+42866_0820_1_02
+42866_0820_1_04
+```{r}
+df$Date_collected = 0
 #Addressing notes
 df$Cause_of_death = rep(c(''),times=nrow(df))
 df[which(df$Seedling_ID%in%df[which(df$Notes=='Recolecta'),'Seedling_ID']),'Cause_of_death'] = 'Collected' #CHECK THESE
@@ -142,35 +176,728 @@ df[which(df$Seedling_ID=='58779_0820_03'),'Cause_of_death'] = 'Herbivory then Pa
 df[which(df$Notes=='Muerta por pathoenjo '),'Notes'] = '' #Added cause of death
 df[which(df$Notes=="Dan wrote plant #3, but it's been #2"),'Notes'] = ''#Resolved
 df[which(df$Notes=="has an 'x' on data sheet and some illegible"),'Notes'] = ''#Resolved
+df[which(df$Notes=='20200102: no data'),'Notes'] = ''#Data gap for one time point
+df = df[order(df$Date),]
+df[which(df$Seedling_ID=='01687_0820_09'),'Notes'] = ''#Should switch herbivory and pathogen symptoms to 1 after first sign (will do this for all seedlings)
+df[which((df$Seedling_ID=='03546_0820_01')&(df$Date>20190927)),'Seedling_ID'] = '03546_0820_02' #Mislabeled
+df[which(grepl('03546_0820_',df$Seedling_ID)),'Notes'] = ''
+
+df = df[which(!((df$Date==20200303)&(df$Seedling_ID=='02512_0820_09'))),] #Had died or been collected previously
+df = df[which(!((df$Date==20200303)&(df$Seedling_ID=='02512_0820_16'))),] #Had died or been collected previously
+df = df[which(!((df$Date==20200311)&(df$Seedling_ID=='01687_0820_06'))),] #Had died or been collected previously
+
+df[which(grepl('no data',df$Notes)),'Notes'] = ''
+#df[which(grepl('ecolecta',df$Notes)),'Notes'] = '' #Will figure out collection date programatically
+df[which(grepl('herbovoria',df$Notes)),] = '' #Redundant with data
+df = df[which(!((df$Date==20190904)&(df$Seedling_ID=='13665_0820_02'))),] #Had been collected previously
+#df[which(grepl('Collected',df$Notes)),'Notes'] = ''#Will be dealt with at a later step
+df[which(df$Seedling_ID=='12249_0803_01'),'Notes'] = ''#Issue addressed by Makenna
+df[which(grepl('15809_0820_',df$Seedling_ID)),'Notes'] = ''#Issues addressed by Makenna
+#df[which(grepl('ollected',df$Notes)),'Notes'] = ''#Collection dates will be determined programatically
+df[which(df$Seedling_ID=='42866_0820_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42866_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID%in%c('42866_0820_01','42866_0820_03','42866_0820_05','42866_0820_06')),'Cause_of_death'] = 'Fallen tree'
+df[which(df$Seedling_ID=='42866_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42866_0803_01'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='42866_0803_01'),'Notes'] = ''
+
+df = df[which(df$Notes!='trampa apastada por arbol caido'),]
+df[which(df$Seedling_ID=='01687_1901_03'),'Notes'] = '' #Issues resolved by Makenna
+df[which(df$Seedling_ID=='12249_0820_03'),'Notes'] = '' #Redundant
+df[which(df$Seedling_ID=='12525_0407_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12525_0407_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0820_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='58779_0820_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0820_01'),'Date_collected'] = 20190812
+df[which((df$Seedling_ID=='58779_0820_08')&(df$Date>20190815)),'Seedling_ID'] = '58779_0820_11' #Incorrectly entered
+df[which(df$Seedling_ID=='58779_0820_08'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='58779_0820_08'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0820_08'),'Date_collected'] = 20190812
+df[which(df$Seedling_ID=='01772_0407_01'),'Date_collected'] = 20190902
+df[which(df$Seedling_ID=='01772_0407_01'),'Cause_of_death'] = 'Pathogen'
+df[which(df$Seedling_ID=='01772_0407_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0803_03'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='58779_0803_03'),'Date_collected'] = 20190918
+df[which(df$Seedling_ID=='58779_0803_03'),'Notes'] = ''
+df[which(df$Seedling_ID=='01772_0820_01'),'Cause_of_death'] = 'Collected/Pathogen'
+df[which(df$Seedling_ID=='01772_0820_01'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='01772_0820_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='13665_0407_01'),'Cause_of_death'] = 'Collected/Pathogen'
+df[which(df$Seedling_ID=='13665_0407_01'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='13665_0407_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='41607_0803_01'),'Cause_of_death'] = 'Collected/Pathogen'
+df[which(df$Seedling_ID=='41607_0803_01'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='41607_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='01772_0803_02'),'Cause_of_death'] = 'Herbivory/Pathogen'
+df[which(df$Seedling_ID=='01772_0803_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0820_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='02512_0820_02'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='02512_0820_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0820_07'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='02512_0820_07'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='02512_0820_07'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0820_11'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='02512_0820_11'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='02512_0820_11'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0820_12'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='02512_0820_12'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='02512_0820_12'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0820_14'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='02512_0820_14'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='02512_0820_14'),'Notes'] = ''
+df[which(df$Seedling_ID=='12249_0820_08'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0820_08'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='12249_0820_08'),'Notes'] = ''
+df[which(df$Seedling_ID=='12855_0820_08'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12855_0820_08'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='12855_0820_08'),'Notes'] = ''
+df[which(df$Seedling_ID=='12855_0820_13'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0820_13'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='12855_0820_13'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0820_10'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0820_10'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='13687_0820_10'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0820_06'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_06'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='42320_0820_06'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0820_07'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_07'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='42320_0820_07'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0820_14'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_14'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='42320_0820_14'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0820_15'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_15'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='42320_0820_15'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0820_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0820_02'),'Date_collected'] = 20190821
+df[which(df$Seedling_ID=='12249_0820_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_04'),'Date_collected'] = 20190821
+df[which(df$Seedling_ID=='42320_0820_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='13665_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13665_0820_04'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='13665_0820_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='41346_0407_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='41346_0407_01'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='41346_0407_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='41346_0803_03'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='41346_0803_03'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='41346_0803_03'),'Notes'] = ''
+df[which(df$Seedling_ID=='41346_0803_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='41346_0803_04'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='41346_0803_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='58779_0803_01'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='58779_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='01687_0803_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='01687_0803_03'),'Date_collected'] = 20190926
+df[which(df$Seedling_ID=='01687_0803_03'),'Notes'] = ''
+df[which(df$Seedling_ID=='01687_1901_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='01687_1901_01'),'Date_collected'] = 20190926
+df[which(df$Seedling_ID=='01687_1901_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='13665_0820_06'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='13665_0820_06'),'Notes'] = ''
+df[which(df$Seedling_ID=='58779_0820_11'),'Cause_of_death'] = 'Pathogen'
+df[which(df$Seedling_ID=='58779_0820_11'),'Notes'] = ''
+df[which(df$Seedling_ID=='12249_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0820_04'),'Date_collected'] = 20190903
+df[which(df$Seedling_ID=='12249_0820_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='12249_0820_06'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12249_0820_06'),'Date_collected'] = 20190903
+df[which(df$Seedling_ID=='12249_0820_06'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0820_06'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0820_06'),'Date_collected'] = 20190903
+df[which(df$Seedling_ID=='13687_0820_06'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0407_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='02512_0407_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='02512_0407_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='02512_0803_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='02512_0803_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='02512_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='12525_0803_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12525_0803_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='12525_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0803_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='13687_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='01772_0407_02'),'Cause_of_death'] = 'Collected/Pathogen'
+df[which(df$Seedling_ID=='01772_0407_02'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='01772_0407_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0820_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0820_03'),'Date_collected'] = 20190828
+df[which(df$Seedling_ID=='13687_0820_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='42320_0820_12'),'Cause_of_death'] = 'Pathogen'
+df[which(df$Seedling_ID=='42320_0820_12'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0820_07'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13687_0820_07'),'Notes'] = ''
+df[which((df$Seedling_ID=='58779_0820_09')&(df$Notes=='jerminacion')),'Seedling_ID'] = '58779_0820_12'
+
+df[which(df$Seedling_ID=='12855_0407_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0407_02'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0407_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='13687_0820_11'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13687_0820_11'),'Notes'] = ''
+df[which(grepl('jerminacion',df$Notes)),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01687_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='01687_0820_04'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='01687_0820_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='01687_0820_08'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='01687_0820_08'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='01687_0820_08'),'Notes'] = ''
+df[which(df$Seedling_ID=='01772_0803_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='01772_0803_01'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='01772_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='01772_0820_04'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='01772_0820_04'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='01772_0820_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='03546_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='03546_0803_01'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='03546_0803_01'),'Notes'] = ''
+df[which(df$Seedling_ID=='41346_0803_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='41346_0803_02'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='41346_0803_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_0820_03'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13665_0820_03'),'Notes'] = ''
+df[which(df$Seedling_ID=='12249_0407_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0407_04'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12249_0407_04'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='12249_0407_04'),'Notes'] = ''
+
+df[which(df$Notes=="100% herrbivoria and cortada por herbivoria but also first day it's recorded"),'Seedling_ID'] = '12249_0407_06'
+df[which(df$Seedling_ID=='12249_0407_06'),'Seedling_Num'] = 6
+df[which(df$Seedling_ID=='12249_0407_06'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='12249_0407_06'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='58779_0820_10'),'Cause_of_death'] = 'Other'
+df[which(df$Seedling_ID=='58779_0820_10'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0820_11'),'Cause_of_death'] = 'Pathogen/Herbivory'
+df[which(df$Seedling_ID=='12249_0820_11'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0820_11'),'Cause_of_death'] = 'Pathogen/Herbivory'
+df[which(df$Seedling_ID=='12249_0820_11'),'Notes'] = ''
+df[which(grepl('marchite',df$Notes)),'Notes'] = ''#Picked up in pathogen symptom data
+
+df[which(df$Seedling_ID=='13665_0407_03'),'Cause_of_death'] = 'Pathogen'
+df[which(df$Seedling_ID=='13665_0407_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='41607_0820_07'),'Cause_of_death'] = 'Pathogen'
+df[which(df$Seedling_ID=='41607_0820_07'),'Notes'] = ''
+
+df[which(grepl('hoja',df$Notes)),'Notes'] = ''#Picked up in data
+df[which(grepl('nferm',df$Notes)),'Notes'] = ''#Picked up in data
+
+df[which(df$Seedling_ID=='01401_0820_10'),'Notes'] = ''#Picked up in data
+
+df = df[which(!((df$Seedling_ID=='41607_0407_02')&(df$Date==20200625))),]
+df[which(df$Seedling_ID=='41607_0407_02'),'Notes'] = ''
+df[which(df$Seedling_ID=='41607_0407_02'),'Cause_of_death'] = 'Herbivory'
+df = df[which(!((df$Seedling_ID=='41607_0407_03')&(df$Date==20200625))),]
+df[which((df$Seedling_ID=='41607_0407_03')&(df$Date==20200615)),'Herbivory'] = 1
+df[which(df$Seedling_ID=='41607_0407_03'),'Notes'] = ''
+df[which(df$Seedling_ID=='41607_0407_03'),'Cause_of_death'] = 'Herbivory'
+
+df[which(df$Seedling_ID=='02152_0820_04'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='02152_0820_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_0407_02'),'Cause_of_death'] = 'Herbivory'
+df = df[which(!((df$Seedling_ID=='13665_0407_02')&(df$Date==20200625))),] #Seedling had died in previous time step?
+df[which(df$Seedling_ID=='13665_0407_02'),'Notes'] = ''
+df[which((df$Seedling_ID=='13665_0407_02')&(df$Date==20200615)),'Herbivory'] = 1
+
+df[which(df$Seedling_ID=='58779_0820_06'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='58779_0820_06'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13687_0820_02'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='13687_0820_02'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='13687_0820_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='02512_0820_04'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='02512_0820_04'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='02512_0820_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='02512_0820_05'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='02512_0820_05'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='02512_0820_05'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='02512_0820_08'),'Cause_of_death'] = 'Collected/Pathogen/Herbivory'
+df[which(df$Seedling_ID=='02512_0820_08'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='02512_0820_08'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_0820_01'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13665_0820_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_0820_05'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13665_0820_05'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01401_0407_04'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='01401_0407_04'),'Notes'] = ''
+df = df[which(!((df$Seedling_ID=='01401_0407_04')&(df$Date==20200706))),] #Seedling had died in previous time step
+
+df[which(df$Seedling_ID=='42320_0407_02'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='42320_0407_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01401_0407_02'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='01401_0407_02'),'Notes'] = ''
+df[which((df$Seedling_ID=='01401_0407_02')&(df$Date==20200706)),'Herbivory'] = 1
+
+df[which(df$Seedling_ID=='13665_0820_07'),'Notes'] = ''#Redundant
+
+df[which(df$Seedling_ID=='12855_0407_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0407_03'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0407_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01401_0407_03'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='01401_0407_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01401_0820_09'),'Cause_of_death'] = 'Pathogen/Herbivory'
+df[which(df$Seedling_ID=='01401_0820_09'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0820_01'),'Cause_of_death'] = 'Pathogen/Herbivory'
+df[which(df$Seedling_ID=='12249_0820_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='41346_0803_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='41346_0803_01'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='41346_0803_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12855_0407_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0407_04'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0407_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12855_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0820_04'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0820_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12855_0820_11'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12855_0820_11'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0820_11'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0820_07'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12249_0820_07'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12249_0820_07'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0407_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0407_02'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12249_0407_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0407_03'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12249_0407_03'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12249_0407_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0407_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0407_04'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12249_0407_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_0407_05'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0407_05'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12249_0407_05'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12525_0803_02'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12525_0803_02'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='12525_0803_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12525_0820_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12525_0820_01'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='12525_0820_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12525_0820_04'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12525_0820_04'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='12525_0820_04'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13687_0820_08'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='13687_0820_08'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='13687_0820_08'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13687_0407_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0407_03'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='13687_0407_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='41607_0820_01'),'Cause_of_death'] = 'Collected/Pathogen/Herbivory'
+df[which(df$Seedling_ID=='41607_0820_01'),'Date_collected'] = 20200828
+df[which(df$Seedling_ID=='41607_0820_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='41607_0407_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='41607_0407_01'),'Date_collected'] = 20200828
+df[which(df$Seedling_ID=='41607_0407_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='42320_0820_05'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_05'),'Date_collected'] = 20200828
+df[which(df$Seedling_ID=='42320_0820_05'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='42320_0820_11'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_11'),'Date_collected'] = 20200828
+df[which(df$Seedling_ID=='42320_0820_11'),'Notes'] = ''
 ##########Note: remove duplicate entries#############
-
-
 unique(df$Notes)
 ```
+
 ```{r}
-switched_IDs = data.frame('Seedling_ID_original'=c('01401_0820_08','02512_0820_14'),
-           'Seedling_ID_new'=c('01401_0820_11','02512_0820_16'),
-           'Date_collected_or_died_original'=c(20190916,20191015),
-           'Date_started_new'=c(20190917,20191106))
+unique(df[which(grepl('12249_0820_',df$Seedling_ID)),'Seedling_ID'])
+df[which((df$Seedling_ID=='12249_0820_07')&(df$Date<20200625)),'Seedling_ID'] = '12249_0820_11'
+df[which((df$Seedling_ID=='12249_0820_03')&(df$Date>20200504)),'Seedling_ID'] = '12249_0820_12'
+df[which((df$Seedling_ID=='12855_0820_10')&(df$Date<=20191015)),'Seedling_ID'] = '12855_0820_13'
+df[which(df$Seedling_ID=='12855_0820_13'),'Seedling_Num'] = 13
+df[which(df$Seedling_ID=='12855_0820_13'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0820_13'),'Date_collected'] = 20191015
+df[which(df$Seedling_ID=='12855_0820_13'),'Notes'] = ''
+df[which(df$Seedling_ID=='12855_0820_10'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0820_10'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='12855_0820_10'),'Notes'] = ''
+
+df[which((df$Seedling_ID=='13687_0407_04')&(df$Date==20200827)),'Seedling_ID'] = '13687_0407_05'
+df[which(df$Seedling_ID=='13687_0407_05'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='13687_0407_05'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='13687_0407_05'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13687_0407_04'),'Cause_of_death'] = 'Herbivory'
+df[which((df$Seedling_ID=='13687_0407_04')&(df$Date==20200615)),'Herbivory'] = 1
+df = df[which(!((df$Seedling_ID=='13687_0407_04')&(df$Date==20200625))),]
+df[which(df$Seedling_ID=='13687_0407_04'),'Notes'] = ''
+df[which((df$Seedling_ID=='41607_0407_01')&(df$Date<=20200625)),'Seedling_ID'] = '41607_0407_04'
+df[which(df$Seedling_ID=='41607_0407_04'),'Cause_of_death'] = 'Herbivory'
+df[which((df$Seedling_ID=='41607_0407_04')&(df$Date==20200615)),'Herbivory'] = 1
+df = df[which(!((df$Seedling_ID=='41607_0407_04')&(df$Date==20200625))),]
+df[which(df$Seedling_ID=='41607_0407_04'),'Notes'] = ''
+
+df[which((df$Seedling_ID=='42320_0407_03')&(df$Date<=20200504)),'Seedling_ID'] = '42320_0407_04'
+df[which(df$Seedling_ID=='42320_0407_04'),'Cause_of_death'] = 'Herbivory/Pathogen'
+df[which(df$Seedling_ID=='42320_0407_04'),'Notes'] = ''
+df[which(df$Seedling_ID=='42320_0407_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0407_03'),'Date_collected'] = 20200828
+df[which(df$Seedling_ID=='42320_0407_03'),'Notes'] = ''
+
+df[which((df$Seedling_ID=='13687_0407_02')&(df$Date<=20200625)),'Seedling_ID'] = '13687_0407_06'
+df[which(df$Seedling_ID=='13687_0407_06'),'Cause_of_death'] = 'Herbivory'
+df[which(df$Seedling_ID=='13687_0407_06'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13687_0407_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13687_0407_02'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='13687_0407_02'),'Notes'] = ''
+
+df[which((df$Seedling_ID=='12525_0407_02')&(df$Date<=20190717)),'Seedling_ID'] = '12525_0407_03'
+df[which(df$Seedling_ID=='12525_0407_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12525_0407_02'),'Date_collected'] = 20200827
+df[which(df$Seedling_ID=='12525_0407_02'),'Notes'] = ''
+
+```
+
+```{r}
+df[which(df$Seedling_ID=='01401_0803_01'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='01687_0803_01'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='01687_1901_03'),'Cause_of_death'] = 'Collected/Herbivory/Pathogen'
+df[which(df$Seedling_ID=='01687_1901_03'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01687_1901_03'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='12249_1901_01'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12525_1901_01'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='12855_1901_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_1901_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='12855_1901_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_1901_01'),'Cause_of_death'] = 'Unknown/Pathogen'
+
+df[which(df$Seedling_ID=='13665_1901_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='13665_1901_02'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='13665_1901_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='13665_1901_03'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='42320_1901_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_1901_01'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='42320_1901_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='58779_1901_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='58779_1901_01'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='58779_1901_01'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01401_0803_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='01401_0803_02'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01401_0803_02'),'Notes'] = ''
+
+df[which(df$Seedling_ID=='01687_0803_02'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='12855_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12855_0803_01'),'Date_collected'] = 20190924
+
+df[which(df$Seedling_ID=='15809_0820_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='15809_0820_01'),'Date_collected'] = 20200826
+
+df[which(df$Seedling_ID=='58779_0803_02'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='13665_1901_05'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='13665_1901_05'),'Date_collected'] = 20190809
+
+df[which(df$Seedling_ID=='12249_0407_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0407_01'),'Date_collected'] = 20200302
+
+df[which(df$Seedling_ID=='12249_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0803_01'),'Date_collected'] = 20190927
+
+df[which(df$Seedling_ID=='12855_0803_02'),'Cause_of_death'] = 'Collected/Hervivory'
+df[which(df$Seedling_ID=='12855_0803_02'),'Date_collected'] = 20190917
+
+df[which(df$Seedling_ID=='12855_0820_01'),'Cause_of_death'] = 'Collected/Pathogen'
+df[which(df$Seedling_ID=='12855_0820_01'),'Date_collected'] = 20190814
+
+df[which(df$Seedling_ID=='12855_0820_02'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='12855_0820_02'),'Date_collected'] = 20200302
+
+df[which(df$Seedling_ID=='02512_0803_02'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='42320_0820_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='42320_0820_01'),'Date_collected'] = 20190927
+
+df[which(df$Seedling_ID=='01401_0820_01'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='01401_0820_03'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='01401_0820_03'),'Date_collected'] = 20191001
+
+df[which(df$Seedling_ID=='01687_0820_01'),'Cause_of_death'] = 'Unknown/Pathogen'
+
+df[which(df$Seedling_ID=='02512_0820_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='02512_0820_01'),'Date_collected'] = 20190814
+
+df[which(df$Seedling_ID=='02512_0820_03'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='12249_0803_03'),'Seedling_ID'] = '12249_0803_01'
+df[which(df$Seedling_ID=='12249_0803_01'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='12249_0803_01'),'Date_collected'] = 20190927
+
+df[which(df$Seedling_ID=='13687_0820_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='13687_0820_01'),'Date_collected'] = 20190921
+
+df[which(df$Seedling_ID=='41346_0803_2'),'Seedling_ID'] = paste('41346_0803_0',df[which(df$Seedling_ID=='41346_0803_2'),'Seedling_Num'],sep='')
+df[which(df$Seedling_ID=='41346_0803_01'),'Date_collected'] = 20200826
+df[which(df$Seedling_ID=='41346_0803_01'),'Cause_of_death'] = 'Collected/Herbivory'
+df[which(df$Seedling_ID=='41346_0803_02'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='41346_0803_02'),'Cause_of_death'] = 'Collected'
+df[which(df$Seedling_ID=='41346_0803_03'),'Date_collected'] = 20190822
+df[which(df$Seedling_ID=='41346_0803_03'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='42320_0820_03'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='42320_0820_03'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01401_0820_04'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='01401_0820_04'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01772_0820_02'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01772_0820_02'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01772_0820_03'),'Date_collected'] = 20200305
+df[which(df$Seedling_ID=='01772_0820_03'),'Cause_of_death'] = 'Collected/Herbivory'
+df = df[which(!((df$Seedling_ID=='01772_0820_03')&(df$Date==20200311))),]
+
+df[which(df$Seedling_ID=='02512_0820_06'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='01687_0820_02'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01687_0820_02'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='12249_0820_03'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='13687_0820_04'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='13687_0820_04'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='58779_0820_02'),'Cause_of_death'] = 'Pathogen/Herbivory'
+
+df[which((df$Seedling_ID=='01401_0407_01')&(df$Date>20190927)),'Seedling_ID'] = '01401_0407_05'
+
+df[which(df$Seedling_ID=='01401_0407_01'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01401_0407_01'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='01687_0820_03'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='58779_0820_05'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='12855_0820_05'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='12855_0820_05'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='13665_0820_02'),'Date_collected'] = 20190903
+df[which(df$Seedling_ID=='13665_0820_02'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='58779_0820_07'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='58779_0820_07'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='15809_0820_02'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='15809_0820_03'),'Date_collected'] = 20191004
+df[which(df$Seedling_ID=='15809_0820_03'),'Cause_of_death'] = 'Collected'
+df = df[which(!((df$Seedling_ID=='15809_0820_03')&(df$Date==20191005))),]
+
+df[which(df$Seedling_ID=='12249_0820_05'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='12249_0820_05'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01687_0820_05'),'Date_collected'] = 20200305
+df[which(df$Seedling_ID=='01687_0820_05'),'Cause_of_death'] = 'Collected/Herbivory'
+df = df[which(!((df$Seedling_ID=='01687_0820_05')&(df$Date==20200311))),]
+
+df[which(df$Seedling_ID=='01687_0820_06'),'Date_collected'] = 20200305
+df[which(df$Seedling_ID=='01687_0820_06'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01772_0820_05'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01772_0820_05'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01772_0820_06'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='13687_0820_05'),'Date_collected'] = 20190921
+df[which(df$Seedling_ID=='13687_0820_05'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='02512_0820_09'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='02512_0820_09'),'Cause_of_death'] = 'Collected'
+df = df[which(!((df$Seedling_ID=='02512_0820_09')&(df$Date==20200225))),]
+
+df[which(df$Seedling_ID=='02512_0820_10'),'Cause_of_death'] = 'Herbivory'
+
+df[which(df$Seedling_ID=='12855_0820_06'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='12855_0820_06'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='41607_0820_02'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='41607_0820_02'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01401_0820_06'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='41607_0820_03'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='41607_0820_03'),'Cause_of_death'] = 'Collected'
+df = df[which(!((df$Seedling_ID=='41607_0820_03')&(df$Date==20200225))),]
+
+df = df[which(df$Seedling_ID!=''),]
+
+df[which(df$Seedling_ID=='01401_0820_06'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='03546_0820_01'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='13665_0820_07'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='13665_0820_07'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='12855_0820_07'),'Cause_of_death'] = 'Herbivory'
+
+df[which(df$Seedling_ID=='42320_0820_10'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='42320_0820_10'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='01687_0820_07'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='13665_0820_08'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='13665_0820_08'),'Cause_of_death'] = 'Collected/Pathogen/Herbivory'
+
+df[which(df$Seedling_ID=='41607_0820_04'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='01687_0820_09'),'Date_collected'] = 20200305
+df[which(df$Seedling_ID=='01687_0820_09'),'Cause_of_death'] = 'Collected/Pathogen/Herbivory'
+df = df[which(!((df$Seedling_ID=='01687_0820_09')&(df$Date==20200311))),]
+
+df[which(df$Seedling_ID=='13665_0820_09'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='42320_0407_01'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='42320_0407_01'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='42320_0820_13'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='42320_0820_13'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='12249_0820_09'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='41607_0820_05'),'Date_collected'] = 20190927
+df[which(df$Seedling_ID=='41607_0820_05'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='13687_0820_09'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='13687_0820_09'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='12855_0407_01'),'Date_collected'] = 20190924
+df[which(df$Seedling_ID=='12855_0407_01'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='03546_0820_02'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='41607_0820_06'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='41607_0820_06'),'Cause_of_death'] = 'Collected'
+df = df[which(!((df$Seedling_ID=='41607_0820_06')&(df$Date==20200225))),]
+
+df[which(df$Seedling_ID=='01772_0407_03'),'Date_collected'] = 20191001
+df[which(df$Seedling_ID=='01772_0407_03'),'Cause_of_death'] = 'Collected/Pathogen'
+
+df[which(df$Seedling_ID=='02512_0820_13'),'Cause_of_death'] = 'Unknown'
+
+df[which(df$Seedling_ID=='12855_0820_09'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='12855_0820_09'),'Cause_of_death'] = 'Collected/Herbivory'
+
+df[which(df$Seedling_ID=='01401_0820_11'),'Cause_of_death'] = 'Herbivory'
+
+df[which(df$Seedling_ID=='02512_0820_15'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='02512_0820_15'),'Cause_of_death'] = 'Collected/Herbivory'
+df = df[which(!((df$Seedling_ID=='02512_0820_15')&(df$Date>=20200225))),]
+
+df[which(df$Seedling_ID=='12249_0820_10'),'Cause_of_death'] = 'Pathogen'
+
+df[which(df$Seedling_ID=='13687_0407_01'),'Date_collected'] = 20200224
+df[which(df$Seedling_ID=='13687_0407_01'),'Cause_of_death'] = 'Collected'
+df = df[which(!((df$Seedling_ID=='13687_0407_01')&(df$Date>=20200225))),]
+
+df[which(df$Seedling_ID=='42320_0820_16'),'Date_collected'] = 20191011
+df[which(df$Seedling_ID=='42320_0820_16'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='58779_0820_12'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12855_0820_12'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='02512_0820_16'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='13665_0820_11'),'Cause_of_death'] = 'Pathogen/Herbivory'
+
+df[which(df$Seedling_ID=='13665_0820_10'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='13665_0820_10'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='13665_0407_04'),'Date_collected'] = 20200302
+df[which(df$Seedling_ID=='13665_0407_04'),'Cause_of_death'] = 'Collected'
+
+df[which(df$Seedling_ID=='03546_0407_01'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='01401_0820_10'),'Cause_of_death'] = 'Unknown/Herbivory'
+
+df[which(df$Seedling_ID=='13665_0820_12'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='02152_0820_05'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='02152_0820_08'),'Cause_of_death'] = 'Unknown/Pathogen'
+df[which(df$Seedling_ID=='01401_0407_05'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12320_0820_05'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12320_0820_11'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12320_0407_02'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12320_0407_03'),'Cause_of_death'] = 'Unknown'
+df[which(df$Seedling_ID=='12249_0820_12'),'Cause_of_death'] = 'Herbivory/Pathogen'
+df[which(df$Seedling_ID=='12525_0820_03'),'Cause_of_death'] = 'Unknown'
+
+
+
+unique(df[which(df$Cause_of_death==''),'Seedling_ID'])
 ```
 
 
 
 
 ```{r}
-write.csv(df,'../data/Seedling_census_data_curated_11_21_21.csv',row.names=FALSE)
+switched_IDs = data.frame('Seedling_ID_original'=c('01401_0820_08','02512_0820_14','12249_0820_07','12249_0820_03','12855_0820_10','13687_0407_04','41607_0407_01'),
+           'Seedling_ID_new'=c('01401_0820_11','02512_0820_16','12249_0820_11','12249_0820_12','12855_0820_13','13687_0407_05','41607_0407_04'),
+           'Date_collected_or_died_original'=c(20190916,20191015,20200518,20200413,20191015,20200625,20200615),
+           'Date_started_new'=c(20190917,20191106,20200625,20200518,20200413,20200827,20200828))
 ```
+
+
 Add adult tag, adult species, seedling species, seedling ID, etc.
 ```{r}
 
 df$AdultTag <- lapply(df$Seedling_ID, function(x) as.numeric(strsplit(x,'_')[[1]][1]))
 df$Exclosure_Code <- lapply(df$Seedling_ID, function(x) as.numeric(strsplit(x,'_')[[1]][2]))
-df$Seedling_Rep <- lapply(df$Seedling_ID, function(x) as.numeric(strsplit(x,'_')[[1]][3]))
-
-df$AdultTag = df$Seedling_ID
+df$Seedling_Num <- lapply(df$Seedling_ID, function(x) as.numeric(strsplit(x,'_')[[1]][3]))
+df$Seedling_Species <- lapply(df$Exclosure_Code,function(x) mapvalues(x[[1]],from=c(0407,0803,0820,1901),to=c('DG','HC','HT','SA'),warn_missing=FALSE))
+df$Adult_Species <- lapply(df$AdultTag, function(x) mapvalues(x[[1]],
+                              from = c(1687,3546,1772,41346,15809,42866,58779,1401,13665,42320,12855,41607,12249,2512,12525,13687),
+                              to = c('DG','HC','HC','SA','DG','HT','HT','HC','SA','DG','HT','SA','HC','HT','DG','SA'),warn_missing=FALSE))
+head(df)
 ```
 
-
+```{r}
+df = apply(df,2,as.character)
+write.csv(df,'../data/Seedling_census_data_curated_11_28_21.csv',row.names=FALSE)
+```
 
 
 
